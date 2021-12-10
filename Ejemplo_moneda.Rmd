@@ -1,0 +1,129 @@
+---
+title: "Ejemplo moneda"
+author: "MDM"
+date: "9/12/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(ggplot2)
+```
+
+Se intenta obtener la distribución de probabilidades de tirar una moneda levemente desbalanceada. Se toma como prior una distribución Beta y la verosimilitud es una distribución Binomial que tenga en cuenta el desbalanceo.
+
+```{r}
+#Situación con Beta no informativa
+prior <- function(x){
+  dbeta(x,1,1)
+}
+
+#Binomial para la tirada de la moneda. De 10 tiros se obtienen 4 éxitos
+likelihood <- function(x){
+  dbinom(4,10,x)
+}
+
+posterior <- function(x){
+  likelihood(x)*prior(x)
+}
+
+# Distribución normal para generar las instancias de la Markov Chain para el algoritmo de Metropolis
+proposal <- function(x){
+  min(max(rnorm(1, x, 0.2),0.001),0.999)  #la posterior da NA si el argumento es <0 o >1
+}
+
+pasos<-100000
+#genero la lista de NA que se va a ir llenando con los sampleos de la posterior
+stored <- rep(NA, pasos)
+x_viejo <- 0.1   #primer x al azar
+
+set.seed(10)
+#MCMC
+for(i in 1:pasos){
+  x_nuevo <- proposal(x_viejo)
+  ratio <- min(1, (posterior(x_nuevo)/posterior(x_viejo)))
+  accept <- runif(1) < ratio
+  stored[i] <- ifelse(accept, x_nuevo, x_viejo)
+  x_viejo <- stored[i]
+}
+
+
+```
+
+Grafico los resultados
+
+```{r Graficos}
+plot(stored, type = 'p', ylab='Prob')
+
+ggplot() + aes(stored)+ geom_histogram(aes(y=..count../sum(..count..)),binwidth=0.01, colour="black", fill="white")+
+  labs(x = "Probabilidad")+
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+```
+
+Para una moneda no balanceada, una distribución normal no debería ajustarse a la distribución obtenida por nuestro MCMC. La distribución debería ser levemente asimétrica, por lo que una distribución Beta con \alfa distinto de \beta sería razonable. Superpongo a la distribución obtenida ambas distribuciones teóricas:
+
+```{r}
+df <- data.frame(stored)
+
+b_ni <- ggplot(df,aes(stored))+
+  geom_histogram(aes(y=..density..), bins = 50, colour= "#000000", fill = "#0099F8")+
+  geom_function(fun = dnorm, args = list(mean = 0.4, sd = 0.14), colour="black", size=0)+
+  geom_function(fun = dbeta, args = list(shape1 = 5, shape2 = 7), colour="red", size=1)+
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  labs(x = "Probabilidad")
+b_ni
+```
+Beta informativa:
+```{r}
+#Situación con Beta informativa
+prior_inf <- function(x){
+  dbeta(x,5,5)
+}
+
+#Binomial con 10 tiradas y 4 caras
+likelihood <- function(x){
+  dbinom(4,10,x)
+}
+
+posterior <- function(x){
+  likelihood(x)*prior_inf(x)
+}
+
+# Distribución normal para generar las instancias de la Markov Chain para el algoritmo de Metropolis
+proposal <- function(x){
+  min(max(rnorm(1, x, 0.2),0.001),0.999)  #la posterior da NA si el argumento es <0 o >1
+}
+
+pasos<-100000
+#genero la lista de NA que se va a ir llenando con los sampleos de la posterior
+stored_inf <- rep(NA, pasos)
+x_viejo <- 0.1   #primer x al azar
+
+set.seed(10)
+#MCMC
+for(i in 1:pasos){
+  x_nuevo <- proposal(x_viejo)
+  ratio <- min(1, (posterior(x_nuevo)/posterior(x_viejo)))
+  accept <- runif(1) < ratio
+  stored_inf[i] <- ifelse(accept, x_nuevo, x_viejo)
+  x_viejo <- stored_inf[i]
+}
+```
+
+Resultado:
+```{r}
+df_inf <- data.frame(stored_inf)
+
+b_i <- ggplot(df,aes(stored_inf))+
+  geom_histogram(aes(y=..density..), bins = 50, colour= "#000000", fill = "#0099F8")+
+  geom_function(fun = dbeta, args = list(shape1 = 9, shape2 = 11), colour="red", size=1)+
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  labs(x = "Probabilidad")
+b_i
+```
