@@ -1,0 +1,84 @@
+## Algoritmo Markov chain Monte Carlo para un modelo Bayesiano de cambio único
+## Leo los datos
+chptdat = read.table("./star/COUP551_rates.dat", skip=1)
+Y=chptdat[,2] # guardo los datos en Y
+ts.plot(Y,main="Serie de tiempo de punto de cambio")
+
+KGUESS = 10 # basado en el plot, suponemos este valor para k
+
+## funcion con valores por defecto para la long de la cadena, datos, b1, b2
+mhsampler = function(NUMIT=1000,dat=Y, b1 = 100, b2 = 100) 
+  {
+    n = length(dat)
+    cat("n=",n,"\n")
+    ## set up
+    ## NUMIT x 3 matriz para ir guardando los valores de la cadena de Markov
+    ## cada fila corresponde a uno de los 3 parámetros en orden: theta,lambda,k
+    ## cada columna corresponde a un estado de la cadena de Markov
+    mchain = matrix(NA, 3, NUMIT)
+    acc = 0 # contador de propuestas aceptadas (solo para k)
+    
+    ## Valores iniciales de la cadena. Arbitrario
+    
+    kinit = floor(n/2) # aprox a mitad de camino entre 1 y n
+    mchain[,1] = c(1,1,kinit)
+    
+    for (i in 2:NUMIT)
+      {
+        ## valor más actualizado para cada parámetro
+        currtheta = mchain[1,i-1]
+        currlambda = mchain[2,i-1]
+        currk = mchain[3,i-1]
+        
+        ## prior de theta (se actualiza por Gibbs)
+        currtheta = rgamma(1,shape=sum(Y[1:currk])+0.5, scale=b1/(currk*b1+1))
+        
+        ## prior de lambda (se actualiza por Gibbs)
+        currlambda = rgamma(1,shape=sum(Y[(currk+1):n])+0.5, scale=b2/((n-currk)*b2+1))
+        
+        ## prior de k (se actualiza por Metropolis-Hastings)
+        propk = sample(x=seq(2,n-1), size=1) # saco una muestra al azar de uniforme{2,..(n-1)}
+
+        ## Paso de aceptar-rechazar Metropolis (en escala log)
+        logMHratio = sum(Y[1:propk])*log(currtheta)+sum(Y[(propk+1):n])*log(currlambda)-propk*currtheta- (n-propk)*currlambda - (sum(Y[1:currk])*log(currtheta)+sum(Y[(currk+1):n])*log(currlambda)-currk*currtheta- (n-currk)*currlambda)
+        
+        logalpha = min(0,logMHratio) # alpha = min(1,MHratio)
+        if (log(runif(1))<logalpha) # acepto si unif(0,1)<alpha, o sea, acepto con probabilidad alpha, si no permanece en mismo estado
+          {
+            acc = acc + 1 # aumento la cuenta de proposals aceptadas
+            currk = propk
+          }
+        
+        #currk = KGUESS # si no sampleamos k (k fijo)
+        
+        ## actualizo la cadena con valores nuevos
+        mchain[,i] = c(currtheta,currlambda,currk)
+        
+      }
+
+    cat("El algoritmo de Markov chain corrió por",NUMIT,"iteraciones (acc.rate_k =",acc/(NUMIT-1),")\n")
+    cat("Los parametros están en orden: theta, lambda, k\n")
+    return(mchain)
+  }
+
+
+mchain <- mhsampler(NUMIT=1000,dat=Y)
+
+#Ahora que tenemos una salida de nuestro sampleador, podemos tratar esta salida como datos 
+#de los cuales podemos estimar valores de interés. Por ejemplo para estimar la esperanza de la distribución
+#marginal de un parámetro determinado simplemente podemos promediar todos los sampleos de ese parámetro para 
+#estimar E(theta)
+
+mean(mchain[1,]) # obtener la media de la primera fila (thetas)
+
+#Para obtener estimados de la media para todos los parámetros:
+apply(mchain,1,mean) # computo la media por fila (todos los parámetros a la vez)
+apply(mchain,1,median) # computo la mediana por fila (todos los parámetros a la vez)
+
+#Para obtener un estimado de la posterior completa:
+plot(density(mchain[1,]),main="Plot de densidad suavizado para la posterior de theta")
+plot(density(mchain[2,]),main="Plot de densidad suavizado para la posterior de lambda")
+hist(mchain[3,], breaks = 15, main="Histograma para la posterior de k")
+
+#Para encontrar la probabilidad de que lambda sea mayor a 10
+sum(mchain[2,]>10)/length(mchain[2,])
