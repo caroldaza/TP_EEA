@@ -1,4 +1,4 @@
 # TP_EEA
-Repositorio del TP final de EEA 2021
+Repositorio para materia Enfoque Estadístico del Aprendizaje
 
 Código de dos ejemplos de aplicación de Markov Chain Monte Carlo
